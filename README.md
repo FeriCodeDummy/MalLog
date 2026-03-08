@@ -149,7 +149,7 @@ MalLog/
 │   ├── services/
 │   └── run.py
 │
-├── web-app/
+├── mal-log-web/
 │   ├── app/
 │   ├── components/
 │   ├── lib/
@@ -158,7 +158,7 @@ MalLog/
 ├── docs/
 │   └── architecture-diagram.png
 │
-├── docker-compose.yml
+├── compose.yml
 └── README.md
 ```
 
