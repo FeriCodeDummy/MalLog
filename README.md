@@ -121,7 +121,7 @@ Ni deljene baze podatkov, kar omogoča:
 
 ![architecture.png](/docs/architecture.png)
 ## 4. Struktura repozitorija
-Repozitorij je organiziran po poslovnih domenah, podobno kot v screaming architecture pristopu, kakršen je uporabljen tudi v referenčnem repozitoriju.
+Repozitorij je organiziran po poslovnih domenah.
 ```
 MalLog/
 │
