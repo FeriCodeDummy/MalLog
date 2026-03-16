@@ -36,9 +36,9 @@ Glavni cilj sistema je poenostaviti odkrivanje nenavadne aktivnosti v strežniš
 
 Sistem je sestavljen iz več neodvisnih mikrostoritev, ki:
 
-- komunicirajo prek **REST API**,
+- komunicirajo prek **REST Gateway**,
 - imajo jasno ločene odgovornosti,
-- lahko uporabljajo ločene podatkovne baze,
+uporabljajo ločene podatkovne baze,
 - skupaj tvorijo enoten sistem za pregled in analizo logov.
 
 ---
