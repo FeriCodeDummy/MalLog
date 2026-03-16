@@ -1,0 +1,39 @@
+services:
+  auth_service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+
+    env_file:
+      - ./auth_service/.env
+    ports:
+      - "5000:5000"
+    depends_on:
+      db_auth:
+        condition: service_healthy
+    networks: [app_net]
+
+   db_auth:
+    build:
+      context: ./db/auth
+    environment:
+      MYSQL_ROOT_PASSWORD: toor
+      MYSQL_DATABASE: auth_ms
+      MYSQL_USER: app
+      MYSQL_PASSWORD: ppa
+    ports:
+      - "3307:3306"
+    volumes:
+      - auth_db_data:/var/lib/mysql
+    networks: [app_net]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  auth_db_data:
+
+networks:
+  app_net: {}

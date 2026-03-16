@@ -1,0 +1,11 @@
+flask
+flask-smorest
+marshmallow
+apispec
+python-dotenv
+PyMySQL
+PyJWT
+requests
+cryptography
+pika
+pytest
