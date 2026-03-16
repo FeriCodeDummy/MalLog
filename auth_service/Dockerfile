@@ -1,22 +1,15 @@
-FROM python:3.12-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
- && rm -rf /var/lib/apt/lists/*
+COPY package.json ./
+RUN npm install
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY tsconfig.json jest.config.js ./
+COPY src ./src
 
-COPY . .
-
-RUN useradd -m appuser && chown -R appuser:appuser /app
-USER appuser
+RUN npm run build
 
 EXPOSE 5000
 
-CMD ["python", "run.py"]
+CMD ["npm", "start"]
