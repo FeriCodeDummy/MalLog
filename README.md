@@ -131,6 +131,8 @@ MalLog/
 │   ├── models/
 │   ├── services/
 │   ├── utils/
+    ├── tests/
+        └── test_auth_api.py
 │   └── run.py
 │
 ├── log-ingestion-service/
