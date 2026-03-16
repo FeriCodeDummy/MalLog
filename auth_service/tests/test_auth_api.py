@@ -19,6 +19,7 @@ def test_swagger_ui_is_available():
     app = run.create_app(testing=True, db_connection=object())
     client = app.test_client()
 
+
     response = client.get("/swagger-ui", follow_redirects=True)
 
     assert response.status_code == 200
