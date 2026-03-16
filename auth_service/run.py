@@ -8,7 +8,10 @@ from flask.views import MethodView
 from flask_smorest import Api, Blueprint, abort
 from marshmallow import Schema, fields
 
-import dbq as queries
+try:
+    from . import dbq as queries
+except ImportError:
+    import dbq as queries
 
 
 def hash_password(password: str) -> str:

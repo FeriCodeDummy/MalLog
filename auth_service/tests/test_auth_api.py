@@ -1,6 +1,6 @@
 from hashlib import sha256
 
-import run
+from auth_service import run
 
 
 def test_openapi_spec_is_available():
