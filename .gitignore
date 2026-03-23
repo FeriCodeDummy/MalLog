@@ -2,3 +2,5 @@
 /auth_service/node_modules/
 /auth_service/dist/
 /auth_service/coverage/
+**/__pycache__/
+*.py[cod]

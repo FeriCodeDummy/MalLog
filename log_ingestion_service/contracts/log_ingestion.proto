@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package logingestion;
+
+service LogIngestionService {
+  rpc UploadLog(stream LogChunk) returns (UploadResponse);
+}
+
+message LogChunk {
+  bytes content = 1;
+}
+
+message UploadResponse {
+  bool success = 1;
+  string message = 2;
+  string normalized_logs_json = 3;
+  string detected_format = 4;
+  int32 entry_count = 5;
+}

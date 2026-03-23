@@ -29,3 +29,25 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  test-python-log-ingestion-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: log_ingestion_service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: log_ingestion_service/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -p "test_*.py"
