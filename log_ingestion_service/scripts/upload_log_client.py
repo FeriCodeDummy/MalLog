@@ -44,7 +44,7 @@ async def upload_log(
 
     print(f"success={response.success}")
     print(f"message={response.message}")
-    print(f"detected_format={response.detected_format}")
+    print(f"detected_log_type={response.detected_log_type}")
     print(f"entry_count={response.entry_count}")
     if response.normalized_logs_json:
         print(response.normalized_logs_json)

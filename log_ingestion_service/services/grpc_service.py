@@ -69,7 +69,7 @@ class LogIngestionService(log_ingestion_pb2_grpc.LogIngestionServiceServicer):
                 f"{chunks_received} chunk(s)."
             ),
             normalized_logs_json=normalized_json,
-            detected_format=parse_result.detected_format,
+            detected_log_type=parse_result.detected_log_type,
             entry_count=len(parse_result.entries),
         )
 

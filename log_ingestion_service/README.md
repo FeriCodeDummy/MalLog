@@ -12,25 +12,43 @@ Proto contract is stored in:
 
 - `contracts/log_ingestion.proto`
 
-## Supported Input Formats
+## Supported Log Types
 
-Every line in the uploaded `.log` must follow exactly one of these formats
-(all lines must use the same one):
+The service now detects and normalizes these log families:
 
-1. `[TYPE] TIMESTAMP message`
-2. `TIMESTAMP [TYPE] message`
-3. `[TYPE] (TIMESTAMP) message`
-4. `<TIMESTAMP> (TYPE) message`
-5. `TIMESTAMP (TYPE) message`
-6. `TYPE <TIMESTAMP> message`
+1. `iis_header` (`#Fields: ...`)
+2. `nginx_error`
+3. `haproxy`
+4. `tomcat_catalina`
+5. `http_access_common`
+6. `iis_w3c_line_fallback`
 
-Rules:
-
-- `TIMESTAMP` must be `[MM/DD/YYYY hh:mm:ss]`
-- `TYPE` must be one of `INFO`, `ERROR`, `WARN`
-- `message` must be single-line and must not contain `;`
+Detection uses strict regex patterns in `services/log_parser.py`.
 
 If any line breaks these rules, the response returns `success=false`.
+
+## Normalized JSON Shape
+
+`normalized_logs_json` contains:
+
+```json
+{
+  "log_type": "nginx_error",
+  "entry_count": 1,
+  "entries": [
+    {
+      "log_type": "nginx_error",
+      "raw_line": "...",
+      "message": "...",
+      "timestamp": "2026-03-30T14:22:05",
+      "severity": "error",
+      "parsed_fields": {
+        "worker": "1234#1234"
+      }
+    }
+  ]
+}
+```
 
 ## Run
 
