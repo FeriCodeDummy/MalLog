@@ -9,6 +9,7 @@ grpc_server = GrpcServerManager(
     host=settings.grpc_host,
     port=settings.grpc_port,
     max_upload_bytes=settings.max_upload_bytes,
+    max_message_bytes=settings.grpc_max_message_bytes,
 )
 
 

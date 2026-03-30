@@ -75,8 +75,19 @@ class LogIngestionService(log_ingestion_pb2_grpc.LogIngestionServiceServicer):
 
 
 class GrpcServerManager:
-    def __init__(self, host: str, port: int, max_upload_bytes: int) -> None:
-        self._server = grpc.aio.server()
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        max_upload_bytes: int,
+        max_message_bytes: int,
+    ) -> None:
+        self._server = grpc.aio.server(
+            options=[
+                ("grpc.max_send_message_length", max_message_bytes),
+                ("grpc.max_receive_message_length", max_message_bytes),
+            ]
+        )
         self._started = False
 
         log_ingestion_pb2_grpc.add_LogIngestionServiceServicer_to_server(

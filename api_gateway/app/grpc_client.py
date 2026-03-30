@@ -23,11 +23,13 @@ class LogIngestionGrpcClient:
         target: str,
         chunk_size: int,
         timeout_seconds: float,
+        max_message_bytes: int,
         cassandra_logger: Any | None = None,
     ) -> None:
         self._target = target
         self._chunk_size = chunk_size
         self._timeout_seconds = timeout_seconds
+        self._max_message_bytes = max_message_bytes
         self._cassandra_logger = cassandra_logger
 
     @log_gateway_call(destination="log_ingestion_service", action="upload_log")
@@ -35,7 +37,13 @@ class LogIngestionGrpcClient:
         if not content:
             raise ValueError("No log content provided.")
 
-        with grpc.insecure_channel(self._target) as channel:
+        with grpc.insecure_channel(
+            self._target,
+            options=[
+                ("grpc.max_send_message_length", self._max_message_bytes),
+                ("grpc.max_receive_message_length", self._max_message_bytes),
+            ],
+        ) as channel:
             stub = log_ingestion_pb2_grpc.LogIngestionServiceStub(channel)
 
             def request_iterator():

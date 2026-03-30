@@ -18,6 +18,7 @@ class Settings:
     http_port: int
     grpc_host: str
     grpc_port: int
+    grpc_max_message_bytes: int
     max_upload_bytes: int
 
 
@@ -26,5 +27,10 @@ settings = Settings(
     http_port=_read_int_env("LOG_INGESTION_HTTP_PORT", 8001),
     grpc_host=os.getenv("LOG_INGESTION_GRPC_HOST", "0.0.0.0"),
     grpc_port=_read_int_env("LOG_INGESTION_GRPC_PORT", 50051),
-    max_upload_bytes=_read_int_env("LOG_INGESTION_MAX_UPLOAD_BYTES", 10 * 1024 * 1024),
+    grpc_max_message_bytes=_read_int_env(
+        "LOG_INGESTION_GRPC_MAX_MESSAGE_BYTES", 1024 * 1024 * 1024
+    ),
+    max_upload_bytes=_read_int_env(
+        "LOG_INGESTION_MAX_UPLOAD_BYTES", 1024 * 1024 * 1024
+    ),
 )

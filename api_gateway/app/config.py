@@ -38,6 +38,7 @@ class Settings:
     grpc_target: str
     grpc_chunk_size: int
     grpc_timeout_seconds: float
+    grpc_max_message_bytes: int
     rabbitmq_url: str
     anomaly_request_queue: str
     rabbitmq_timeout_seconds: float
@@ -55,6 +56,9 @@ settings = Settings(
     grpc_target=os.getenv("LOG_INGESTION_GRPC_TARGET", "localhost:50051"),
     grpc_chunk_size=_read_int_env("API_GATEWAY_GRPC_CHUNK_SIZE", 4096),
     grpc_timeout_seconds=_read_float_env("API_GATEWAY_GRPC_TIMEOUT_SECONDS", 20.0),
+    grpc_max_message_bytes=_read_int_env(
+        "API_GATEWAY_GRPC_MAX_MESSAGE_BYTES", 1024 * 1024 * 1024
+    ),
     rabbitmq_url=os.getenv("API_GATEWAY_RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
     anomaly_request_queue=os.getenv("API_GATEWAY_ANOMALY_REQUEST_QUEUE", "anomaly.requests"),
     rabbitmq_timeout_seconds=_read_float_env("API_GATEWAY_RABBITMQ_TIMEOUT_SECONDS", 30.0),

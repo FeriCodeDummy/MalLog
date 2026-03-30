@@ -42,6 +42,7 @@ def create_app(
         target=settings.grpc_target,
         chunk_size=settings.grpc_chunk_size,
         timeout_seconds=settings.grpc_timeout_seconds,
+        max_message_bytes=settings.grpc_max_message_bytes,
         cassandra_logger=app.config["cassandra_logger"],
     )
     app.config["rabbitmq_client"] = rabbitmq_client or RabbitMQGatewayClient(
