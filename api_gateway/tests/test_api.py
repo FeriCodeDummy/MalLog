@@ -1,3 +1,4 @@
+import io
 import json
 import unittest
 from pathlib import Path
@@ -139,6 +140,7 @@ class TestApiGateway(unittest.TestCase):
         response = client.get("/openapi.json")
         self.assertEqual(response.status_code, 200)
         self.assertIn("/test", response.get_json()["paths"])
+        self.assertIn("/submit", response.get_json()["paths"])
 
     def test_test_endpoint_processes_all_files_sequentially(self):
         log_dir = self._create_log_dir()
@@ -204,6 +206,55 @@ class TestApiGateway(unittest.TestCase):
         self.assertEqual(body["anomaly_detection_responses"][0]["file_name"], "a.log")
         self.assertEqual(body["results"][1]["file_name"], "b.log")
         self.assertEqual(body["results"][1]["stage"], "log_ingestion_validation")
+
+    def test_submit_endpoint_processes_uploaded_log(self):
+        payload = b"Uploaded sample line"
+        app, ingestion, rabbit, _ = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post(
+            "/submit",
+            data={"file": (io.BytesIO(payload), "uploaded.log")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        body = response.get_json()
+        self.assertEqual(body["processing_mode"], "single_upload")
+        self.assertEqual(body["order"], ["uploaded.log"])
+        self.assertEqual(body["processed_files"], 1)
+        self.assertEqual(body["successful_files"], 1)
+        self.assertEqual(body["failed_files"], 0)
+        self.assertEqual(len(body["anomaly_detection_responses"]), 1)
+        self.assertEqual(body["results"][0]["status"], "success")
+        self.assertEqual(ingestion.called_payloads, [payload])
+        self.assertEqual(len(rabbit.calls), 1)
+
+    def test_submit_endpoint_rejects_missing_file(self):
+        app, _, _, _ = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post("/submit", data={}, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Missing uploaded file", response.get_json()["message"])
+
+    def test_submit_endpoint_rejects_non_log_file(self):
+        app, _, _, _ = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post(
+            "/submit",
+            data={"file": (io.BytesIO(b"x"), "uploaded.txt")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(".log", response.get_json()["message"])
 
     def test_test_endpoint_missing_path(self):
         app, _, _, _ = self._make_app(

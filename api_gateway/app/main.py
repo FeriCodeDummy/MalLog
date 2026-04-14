@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import grpc
 import pika
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 from app.config import settings
 from app.grpc_client import LogIngestionGrpcClient
@@ -54,6 +54,97 @@ def create_app(
     )
     app.config["openapi_spec"] = OPENAPI_SPEC
     app.config["test_log_path"] = test_log_path or settings.test_log_path
+
+    def _process_log_payload(
+        *,
+        file_name: str,
+        log_content: bytes,
+    ) -> tuple[dict[str, object], dict[str, object] | None, bool]:
+        file_result: dict[str, object] = {"file_name": file_name}
+
+        if not log_content:
+            file_result["status"] = "failed"
+            file_result["stage"] = "file_read"
+            file_result["message"] = "Log file is empty."
+            return file_result, None, False
+
+        try:
+            upload_result = app.config["ingestion_client"].upload_log(log_content)
+        except grpc.RpcError as exc:
+            file_result["status"] = "failed"
+            file_result["stage"] = "log_ingestion_grpc"
+            file_result["message"] = f"Failed to call log ingestion gRPC: {exc}"
+            return file_result, None, False
+        except Exception as exc:  # noqa: BLE001
+            file_result["status"] = "failed"
+            file_result["stage"] = "log_ingestion_grpc"
+            file_result["message"] = f"Unexpected ingestion error: {exc}"
+            return file_result, None, False
+
+        if not upload_result.success:
+            file_result["status"] = "failed"
+            file_result["stage"] = "log_ingestion_validation"
+            file_result["message"] = upload_result.message
+            return file_result, None, False
+
+        try:
+            normalized_payload = json.loads(upload_result.normalized_logs_json)
+        except json.JSONDecodeError:
+            file_result["status"] = "failed"
+            file_result["stage"] = "log_ingestion_normalization"
+            file_result["message"] = "Log ingestion returned invalid normalized JSON."
+            return file_result, None, False
+
+        entries = normalized_payload.get("entries")
+        if not isinstance(entries, list):
+            file_result["status"] = "failed"
+            file_result["stage"] = "log_ingestion_normalization"
+            file_result["message"] = (
+                "Log ingestion response does not contain valid entries."
+            )
+            return file_result, None, False
+
+        uid = uuid4().hex
+
+        try:
+            anomaly_result = app.config["rabbitmq_client"].request_anomaly_detection(
+                uid=uid,
+                entries=entries,
+            )
+        except RabbitMQRequestTimeoutError as exc:
+            file_result["status"] = "failed"
+            file_result["stage"] = "anomaly_detection_queue"
+            file_result["uid"] = uid
+            file_result["message"] = str(exc)
+            return file_result, None, False
+        except pika.exceptions.AMQPError as exc:
+            file_result["status"] = "failed"
+            file_result["stage"] = "anomaly_detection_queue"
+            file_result["uid"] = uid
+            file_result["message"] = f"RabbitMQ error: {exc}"
+            return file_result, None, False
+        except Exception as exc:  # noqa: BLE001
+            file_result["status"] = "failed"
+            file_result["stage"] = "anomaly_detection_queue"
+            file_result["uid"] = uid
+            file_result["message"] = f"Unexpected anomaly pipeline error: {exc}"
+            return file_result, None, False
+
+        file_result["status"] = "success"
+        file_result["uid"] = uid
+        file_result["log_ingestion"] = {
+            "message": upload_result.message,
+            "detected_log_type": upload_result.detected_log_type,
+            "entry_count": upload_result.entry_count,
+        }
+        file_result["anomaly_detection"] = anomaly_result
+
+        anomaly_response = {
+            "file_name": file_name,
+            "uid": uid,
+            "response": anomaly_result,
+        }
+        return file_result, anomaly_response, True
 
     @app.get("/health")
     def health():
@@ -103,103 +194,15 @@ def create_app(
 
         # Process strictly one by one (sequentially), not in parallel.
         for log_file in log_files:
-            file_result: dict[str, object] = {"file_name": log_file.name}
-            log_content = log_file.read_bytes()
-
-            if not log_content:
-                file_result["status"] = "failed"
-                file_result["stage"] = "file_read"
-                file_result["message"] = "Log file is empty."
-                results.append(file_result)
-                continue
-
-            try:
-                upload_result = app.config["ingestion_client"].upload_log(log_content)
-            except grpc.RpcError as exc:
-                file_result["status"] = "failed"
-                file_result["stage"] = "log_ingestion_grpc"
-                file_result["message"] = f"Failed to call log ingestion gRPC: {exc}"
-                results.append(file_result)
-                continue
-            except Exception as exc:  # noqa: BLE001
-                file_result["status"] = "failed"
-                file_result["stage"] = "log_ingestion_grpc"
-                file_result["message"] = f"Unexpected ingestion error: {exc}"
-                results.append(file_result)
-                continue
-
-            if not upload_result.success:
-                file_result["status"] = "failed"
-                file_result["stage"] = "log_ingestion_validation"
-                file_result["message"] = upload_result.message
-                results.append(file_result)
-                continue
-
-            try:
-                normalized_payload = json.loads(upload_result.normalized_logs_json)
-            except json.JSONDecodeError:
-                file_result["status"] = "failed"
-                file_result["stage"] = "log_ingestion_normalization"
-                file_result["message"] = "Log ingestion returned invalid normalized JSON."
-                results.append(file_result)
-                continue
-
-            entries = normalized_payload.get("entries")
-            if not isinstance(entries, list):
-                file_result["status"] = "failed"
-                file_result["stage"] = "log_ingestion_normalization"
-                file_result["message"] = (
-                    "Log ingestion response does not contain valid entries."
-                )
-                results.append(file_result)
-                continue
-
-            uid = uuid4().hex
-
-            try:
-                anomaly_result = app.config["rabbitmq_client"].request_anomaly_detection(
-                    uid=uid,
-                    entries=entries,
-                )
-            except RabbitMQRequestTimeoutError as exc:
-                file_result["status"] = "failed"
-                file_result["stage"] = "anomaly_detection_queue"
-                file_result["uid"] = uid
-                file_result["message"] = str(exc)
-                results.append(file_result)
-                continue
-            except pika.exceptions.AMQPError as exc:
-                file_result["status"] = "failed"
-                file_result["stage"] = "anomaly_detection_queue"
-                file_result["uid"] = uid
-                file_result["message"] = f"RabbitMQ error: {exc}"
-                results.append(file_result)
-                continue
-            except Exception as exc:  # noqa: BLE001
-                file_result["status"] = "failed"
-                file_result["stage"] = "anomaly_detection_queue"
-                file_result["uid"] = uid
-                file_result["message"] = f"Unexpected anomaly pipeline error: {exc}"
-                results.append(file_result)
-                continue
-
-            successful_files += 1
-            file_result["status"] = "success"
-            file_result["uid"] = uid
-            file_result["log_ingestion"] = {
-                "message": upload_result.message,
-                "detected_log_type": upload_result.detected_log_type,
-                "entry_count": upload_result.entry_count,
-            }
-            file_result["anomaly_detection"] = anomaly_result
-            anomaly_detection_responses.append(
-                {
-                    "file_name": log_file.name,
-                    "uid": uid,
-                    "response": anomaly_result,
-                }
+            file_result, anomaly_response, is_success = _process_log_payload(
+                file_name=log_file.name,
+                log_content=log_file.read_bytes(),
             )
             results.append(file_result)
+            if anomaly_response is not None:
+                anomaly_detection_responses.append(anomaly_response)
+            if is_success:
+                successful_files += 1
 
         return jsonify(
             {
@@ -210,6 +213,47 @@ def create_app(
                 "results": results,
                 "processing_mode": "sequential",
                 "order": [path.name for path in log_files],
+            }
+        ), 200
+
+    @app.post("/submit")
+    def submit_log_file():
+        upload = request.files.get("file")
+        if upload is None:
+            return (
+                jsonify(
+                    {
+                        "message": (
+                            "Missing uploaded file. Use multipart/form-data with field 'file'."
+                        )
+                    }
+                ),
+                400,
+            )
+
+        file_name = (upload.filename or "").strip()
+        if not file_name:
+            return jsonify({"message": "Uploaded file name is missing."}), 400
+
+        if not file_name.lower().endswith(".log"):
+            return jsonify({"message": "Only .log files are supported for /submit."}), 400
+
+        file_result, anomaly_response, is_success = _process_log_payload(
+            file_name=file_name,
+            log_content=upload.read(),
+        )
+
+        return jsonify(
+            {
+                "processed_files": 1,
+                "successful_files": 1 if is_success else 0,
+                "failed_files": 0 if is_success else 1,
+                "anomaly_detection_responses": (
+                    [anomaly_response] if anomaly_response is not None else []
+                ),
+                "results": [file_result],
+                "processing_mode": "single_upload",
+                "order": [file_name],
             }
         ), 200
 

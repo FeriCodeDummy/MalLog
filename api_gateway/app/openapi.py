@@ -35,6 +35,15 @@ OPENAPI_SPEC = {
                 },
             }
         },
+        "/submit": {
+            "post": {
+                "summary": "Submit a single .log file and run end-to-end analysis",
+                "responses": {
+                    "200": {"description": "Flow completed"},
+                    "400": {"description": "Missing file or invalid extension"},
+                },
+            }
+        },
         "/logs": {
             "get": {
                 "summary": "Fetch gateway call logs from Cassandra",
