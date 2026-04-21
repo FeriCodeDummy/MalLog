@@ -1,0 +1,12 @@
+CREATE DATABASE IF NOT EXISTS anomaly_detection;
+
+USE anomaly_detection;
+
+CREATE TABLE IF NOT EXISTS anomaly_detection_runs (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  uid VARCHAR(64) NOT NULL UNIQUE,
+  started_at DATETIME NOT NULL,
+  ended_at DATETIME NOT NULL,
+  detection_result TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
