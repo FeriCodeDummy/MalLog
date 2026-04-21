@@ -35,6 +35,8 @@ class Settings:
     http_host: str
     http_port: int
     test_log_path: str
+    auth_service_url: str
+    auth_timeout_seconds: float
     grpc_target: str
     grpc_chunk_size: int
     grpc_timeout_seconds: float
@@ -53,6 +55,8 @@ settings = Settings(
     http_host=os.getenv("API_GATEWAY_HTTP_HOST", "0.0.0.0"),
     http_port=_read_int_env("API_GATEWAY_HTTP_PORT", 8080),
     test_log_path=os.getenv("API_GATEWAY_TEST_LOG_PATH", "./system_test"),
+    auth_service_url=os.getenv("API_GATEWAY_AUTH_SERVICE_URL", "http://localhost:5000"),
+    auth_timeout_seconds=_read_float_env("API_GATEWAY_AUTH_TIMEOUT_SECONDS", 10.0),
     grpc_target=os.getenv("LOG_INGESTION_GRPC_TARGET", "localhost:50051"),
     grpc_chunk_size=_read_int_env("API_GATEWAY_GRPC_CHUNK_SIZE", 4096),
     grpc_timeout_seconds=_read_float_env("API_GATEWAY_GRPC_TIMEOUT_SECONDS", 20.0),

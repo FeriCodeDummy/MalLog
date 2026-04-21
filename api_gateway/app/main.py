@@ -8,6 +8,7 @@ import grpc
 import pika
 from flask import Flask, jsonify, request
 
+from app.auth_client import AuthServiceHttpClient, AuthServiceUnavailableError
 from app.config import settings
 from app.grpc_client import LogIngestionGrpcClient
 from app.openapi import OPENAPI_SPEC
@@ -29,6 +30,7 @@ def create_app(
     *,
     ingestion_client: LogIngestionGrpcClient | None = None,
     rabbitmq_client: RabbitMQGatewayClient | None = None,
+    auth_client: AuthServiceHttpClient | None = None,
     test_log_path: str | None = None,
     cassandra_logger: Any | None = None,
 ) -> Flask:
@@ -50,6 +52,11 @@ def create_app(
         request_queue=settings.anomaly_request_queue,
         timeout_seconds=settings.rabbitmq_timeout_seconds,
         poll_interval_seconds=settings.rabbitmq_poll_interval_seconds,
+        cassandra_logger=app.config["cassandra_logger"],
+    )
+    app.config["auth_client"] = auth_client or AuthServiceHttpClient(
+        base_url=settings.auth_service_url,
+        timeout_seconds=settings.auth_timeout_seconds,
         cassandra_logger=app.config["cassandra_logger"],
     )
     app.config["openapi_spec"] = OPENAPI_SPEC
@@ -146,6 +153,18 @@ def create_app(
         }
         return file_result, anomaly_response, True
 
+    def _proxy_auth_request(action: str):
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"message": "Request body must be a JSON object."}), 400
+
+        try:
+            status_code, auth_payload = getattr(app.config["auth_client"], action)(payload)
+        except AuthServiceUnavailableError as exc:
+            return jsonify({"message": str(exc)}), 503
+
+        return jsonify(auth_payload), status_code
+
     @app.get("/health")
     def health():
         return jsonify({"status": "ok"}), 200
@@ -153,6 +172,18 @@ def create_app(
     @app.get("/openapi.json")
     def openapi():
         return jsonify(app.config["openapi_spec"]), 200
+
+    @app.post("/login")
+    def auth_login():
+        return _proxy_auth_request("login")
+
+    @app.post("/register")
+    def auth_register():
+        return _proxy_auth_request("register")
+
+    @app.post("/session-login")
+    def auth_session_login():
+        return _proxy_auth_request("session_login")
 
     @app.get("/logs")
     def get_logs():

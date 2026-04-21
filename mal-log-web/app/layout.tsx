@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/use-auth";
 
 export const metadata: Metadata = {
-  title: "MalLog Studio",
-  description: "Minimal interface for LOG upload and gateway analysis",
+  title: "MalLog",
+  description: "Protected log analysis workspace powered by the API gateway",
 };
 
 export default function RootLayout({
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

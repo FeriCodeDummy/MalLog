@@ -7,6 +7,7 @@ from uuid import uuid4
 from app.grpc_client import IngestionUploadResult
 from app.main import create_app
 from app.rabbitmq_client import RabbitMQRequestTimeoutError
+from app.auth_client import AuthServiceUnavailableError
 
 
 class FakeIngestionClient:
@@ -54,6 +55,48 @@ class FakeCassandraLogger:
         return None
 
 
+class FakeAuthClient:
+    def __init__(self, should_fail: bool = False) -> None:
+        self.should_fail = should_fail
+        self.login_payloads: list[dict] = []
+        self.register_payloads: list[dict] = []
+        self.session_payloads: list[dict] = []
+
+    def _maybe_fail(self):
+        if self.should_fail:
+            raise AuthServiceUnavailableError("Auth service unavailable: test failure")
+
+    def login(self, payload: dict):
+        self._maybe_fail()
+        self.login_payloads.append(payload)
+        return 200, {
+            "name": "Ana",
+            "surname": "Smith",
+            "email": payload.get("email", "ana@example.com"),
+            "sessionID": "sid-login-123",
+        }
+
+    def register(self, payload: dict):
+        self._maybe_fail()
+        self.register_payloads.append(payload)
+        return 201, {
+            "message": "successful registration",
+            "sessionID": "sid-register-123",
+        }
+
+    def session_login(self, payload: dict):
+        self._maybe_fail()
+        self.session_payloads.append(payload)
+        if payload.get("sessionID") == "missing":
+            return 401, {"message": "invalid session"}
+        return 200, {
+            "name": "Ana",
+            "surname": "Smith",
+            "email": "ana@example.com",
+            "sessionID": payload.get("sessionID", "sid-session-123"),
+        }
+
+
 class TestApiGateway(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp_files: list[Path] = []
@@ -86,18 +129,21 @@ class TestApiGateway(unittest.TestCase):
         test_log_path: str,
         responses: list[IngestionUploadResult],
         should_timeout: bool = False,
+        auth_client: FakeAuthClient | None = None,
     ):
         ingestion = FakeIngestionClient(responses)
         rabbit = FakeRabbitClient(should_timeout=should_timeout)
         cassandra_logger = FakeCassandraLogger()
+        resolved_auth_client = auth_client or FakeAuthClient()
         app = create_app(
             ingestion_client=ingestion,
             rabbitmq_client=rabbit,
+            auth_client=resolved_auth_client,
             test_log_path=test_log_path,
             cassandra_logger=cassandra_logger,
         )
         app.config["TESTING"] = True
-        return app, ingestion, rabbit, cassandra_logger
+        return app, ingestion, rabbit, cassandra_logger, resolved_auth_client
 
     def _success_response(self) -> IngestionUploadResult:
         return IngestionUploadResult(
@@ -122,7 +168,7 @@ class TestApiGateway(unittest.TestCase):
         )
 
     def test_health(self):
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path="missing",
             responses=[self._success_response()],
         )
@@ -132,7 +178,7 @@ class TestApiGateway(unittest.TestCase):
         self.assertEqual(response.get_json()["status"], "ok")
 
     def test_openapi(self):
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path="missing",
             responses=[self._success_response()],
         )
@@ -141,6 +187,7 @@ class TestApiGateway(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("/test", response.get_json()["paths"])
         self.assertIn("/submit", response.get_json()["paths"])
+        self.assertIn("/login", response.get_json()["paths"])
 
     def test_test_endpoint_processes_all_files_sequentially(self):
         log_dir = self._create_log_dir()
@@ -149,7 +196,7 @@ class TestApiGateway(unittest.TestCase):
         self._create_log_file(log_dir, "b.log", b_content)
         self._create_log_file(log_dir, "a.log", a_content)
 
-        app, ingestion, rabbit, _ = self._make_app(
+        app, ingestion, rabbit, _, _ = self._make_app(
             test_log_path=str(log_dir),
             responses=[self._success_response()],
         )
@@ -188,7 +235,7 @@ class TestApiGateway(unittest.TestCase):
             detected_log_type="",
             entry_count=0,
         )
-        app, _, rabbit, _ = self._make_app(
+        app, _, rabbit, _, _ = self._make_app(
             test_log_path=str(log_dir),
             responses=[self._success_response(), failure_response],
         )
@@ -209,7 +256,7 @@ class TestApiGateway(unittest.TestCase):
 
     def test_submit_endpoint_processes_uploaded_log(self):
         payload = b"Uploaded sample line"
-        app, ingestion, rabbit, _ = self._make_app(
+        app, ingestion, rabbit, _, _ = self._make_app(
             test_log_path="missing",
             responses=[self._success_response()],
         )
@@ -233,7 +280,7 @@ class TestApiGateway(unittest.TestCase):
         self.assertEqual(len(rabbit.calls), 1)
 
     def test_submit_endpoint_rejects_missing_file(self):
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path="missing",
             responses=[self._success_response()],
         )
@@ -243,7 +290,7 @@ class TestApiGateway(unittest.TestCase):
         self.assertIn("Missing uploaded file", response.get_json()["message"])
 
     def test_submit_endpoint_rejects_non_log_file(self):
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path="missing",
             responses=[self._success_response()],
         )
@@ -257,7 +304,7 @@ class TestApiGateway(unittest.TestCase):
         self.assertIn(".log", response.get_json()["message"])
 
     def test_test_endpoint_missing_path(self):
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path="not-existing-path",
             responses=[self._success_response()],
         )
@@ -267,7 +314,7 @@ class TestApiGateway(unittest.TestCase):
 
     def test_test_endpoint_no_logs(self):
         empty_dir = self._create_log_dir()
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path=str(empty_dir),
             responses=[self._success_response()],
         )
@@ -285,7 +332,7 @@ class TestApiGateway(unittest.TestCase):
             detected_log_type="",
             entry_count=0,
         )
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path=str(log_dir),
             responses=[failure_response],
         )
@@ -300,7 +347,7 @@ class TestApiGateway(unittest.TestCase):
     def test_test_endpoint_timeout_is_reported(self):
         log_dir = self._create_log_dir()
         self._create_log_file(log_dir, "only.log", "x")
-        app, _, _, _ = self._make_app(
+        app, _, _, _, _ = self._make_app(
             test_log_path=str(log_dir),
             responses=[self._success_response()],
             should_timeout=True,
@@ -314,7 +361,7 @@ class TestApiGateway(unittest.TestCase):
         self.assertEqual(body["results"][0]["stage"], "anomaly_detection_queue")
 
     def test_logs_endpoint(self):
-        app, _, _, cassandra_logger = self._make_app(
+        app, _, _, cassandra_logger, _ = self._make_app(
             test_log_path="missing",
             responses=[self._success_response()],
         )
@@ -325,6 +372,77 @@ class TestApiGateway(unittest.TestCase):
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["logs"][0]["action"], "upload_log:request")
         self.assertEqual(len(cassandra_logger.read_logs()), 1)
+
+    def test_auth_login_route_proxies_request(self):
+        app, _, _, _, auth_client = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post(
+            "/login",
+            json={"email": "ana@example.com", "password": "safe-pass"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["sessionID"], "sid-login-123")
+        self.assertEqual(
+            auth_client.login_payloads,
+            [{"email": "ana@example.com", "password": "safe-pass"}],
+        )
+
+    def test_auth_register_route_proxies_request(self):
+        app, _, _, _, auth_client = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post(
+            "/register",
+            json={
+                "name": "Ana",
+                "surname": "Smith",
+                "email": "ana@example.com",
+                "password": "safe-pass",
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["sessionID"], "sid-register-123")
+        self.assertEqual(len(auth_client.register_payloads), 1)
+
+    def test_auth_session_login_route_preserves_status(self):
+        app, _, _, _, auth_client = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post("/session-login", json={"sessionID": "missing"})
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["message"], "invalid session")
+        self.assertEqual(auth_client.session_payloads, [{"sessionID": "missing"}])
+
+    def test_auth_routes_require_json_object(self):
+        app, _, _, _, _ = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+        )
+        client = app.test_client()
+        response = client.post("/login", data="[]", content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("JSON object", response.get_json()["message"])
+
+    def test_auth_route_returns_503_when_service_is_unavailable(self):
+        app, _, _, _, _ = self._make_app(
+            test_log_path="missing",
+            responses=[self._success_response()],
+            auth_client=FakeAuthClient(should_fail=True),
+        )
+        client = app.test_client()
+        response = client.post(
+            "/login",
+            json={"email": "ana@example.com", "password": "safe-pass"},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Auth service unavailable", response.get_json()["message"])
 
 
 if __name__ == "__main__":

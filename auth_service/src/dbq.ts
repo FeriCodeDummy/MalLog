@@ -80,7 +80,10 @@ export async function insertSession(
   email?: string
 ): Promise<string | null> {
   const sessionId = uuidv4();
-  const sql = "INSERT INTO session (sid, fk_user) VALUES (?, ?);";
+  const sql = `
+    INSERT INTO session (sid, fk_user, ttl)
+    VALUES (?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 7 DAY));
+  `;
 
   try {
     await db.execute<ResultSetHeader>(sql, [sessionId, userId]);

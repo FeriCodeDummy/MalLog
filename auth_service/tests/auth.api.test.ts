@@ -67,6 +67,27 @@ describe("express ts auth service", () => {
     expect(res.body.message).toContain("wrong credentials");
   });
 
+  test("login returns 503 when session creation fails", async () => {
+    const app = createApp({
+      db: {},
+      queries: buildQueries({
+        accountLogin: async () => ({
+          name: "Jane",
+          surname: "Doe",
+          email: "jane@example.com",
+          sessionID: null
+        })
+      })
+    });
+
+    const res = await request(app)
+      .post("/login")
+      .send({ email: "jane@example.com", password: "secret" });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body.message).toContain("Failed to create session");
+  });
+
   test("register success", async () => {
     const app = createApp({
       db: {},
@@ -86,6 +107,26 @@ describe("express ts auth service", () => {
     expect(res.statusCode).toBe(201);
     expect(res.body.message).toBe("successful registration");
     expect(res.body.sessionID).toBe("sid-777");
+  });
+
+  test("register returns 503 when session creation fails", async () => {
+    const app = createApp({
+      db: {},
+      queries: buildQueries({
+        insertUser: async () => 77,
+        insertSession: async () => null
+      })
+    });
+
+    const res = await request(app).post("/register").send({
+      name: "Ana",
+      surname: "Smith",
+      email: "ana@example.com",
+      password: "safe-pass"
+    });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body.message).toContain("Failed to create session");
   });
 
   test("session login invalid session", async () => {

@@ -44,6 +44,39 @@ OPENAPI_SPEC = {
                 },
             }
         },
+        "/login": {
+            "post": {
+                "summary": "Proxy login request to auth service",
+                "responses": {
+                    "200": {"description": "Logged in"},
+                    "400": {"description": "Wrong credentials"},
+                    "422": {"description": "Validation error"},
+                    "503": {"description": "Auth service unavailable"},
+                },
+            }
+        },
+        "/register": {
+            "post": {
+                "summary": "Proxy registration request to auth service",
+                "responses": {
+                    "201": {"description": "Registered"},
+                    "400": {"description": "Bad data"},
+                    "422": {"description": "Validation error"},
+                    "503": {"description": "Auth service unavailable"},
+                },
+            }
+        },
+        "/session-login": {
+            "post": {
+                "summary": "Proxy session validation request to auth service",
+                "responses": {
+                    "200": {"description": "Session valid"},
+                    "400": {"description": "Missing session ID"},
+                    "401": {"description": "Invalid session"},
+                    "503": {"description": "Auth service unavailable"},
+                },
+            }
+        },
         "/logs": {
             "get": {
                 "summary": "Fetch gateway call logs from Cassandra",

@@ -20,6 +20,16 @@ function isString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function hasSessionId(value: unknown): value is { sessionID: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sessionID" in value &&
+    typeof value.sessionID === "string" &&
+    value.sessionID.trim().length > 0
+  );
+}
+
 export function createApp(options: AppOptions = {}) {
   const app = express();
   const db = options.db === undefined ? createDbPool() : options.db;
@@ -55,6 +65,10 @@ export function createApp(options: AppOptions = {}) {
     const account = await queries.accountLogin(db, email, hashPassword(password));
     if (!account) {
       return res.status(400).json({ message: "wrong credentials" });
+    }
+
+    if (!hasSessionId(account)) {
+      return res.status(503).json({ message: "Failed to create session" });
     }
 
     return res.status(200).json(account);
@@ -94,6 +108,10 @@ export function createApp(options: AppOptions = {}) {
     }
 
     const sessionId = await queries.insertSession(db, userId, email);
+    if (!isString(sessionId)) {
+      return res.status(503).json({ message: "Failed to create session" });
+    }
+
     return res.status(201).json({ message: "successful registration", sessionID: sessionId });
   });
 
